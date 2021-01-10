@@ -67,7 +67,8 @@ hello! from Kamailio! :)>
 
 ## TODO
 
-* function to send msg from any route for notification purposes.
+* implement function to send msg from any route for notification purposes.
+* export to KEMI
 
 ## Reference
 
