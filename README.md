@@ -6,15 +6,13 @@ This module provides capability to send messages to slack channel.
 
 Slack channel, posting username and an icon is configurable via module parameters.
 
-Module made as a "learning lesson" to expore Kamailio internals.  
+Module made as a "learning lesson" to expore Kamailio internals.
 
-Currently only one function is implemented:
+Module exports following functions:
 
-`slack_send_message()`
+`slack_send_message` - extract body from MESSAGE and send it to slack. Works only in request route.
 
-This function must be invocked upon MESSAGE request received, w/o parameters.
-Function will extract message body and send it to pre-configured slack webhook.  
-Works only in request route.
+`slack_send_log` - send custom text message, works by the same way as xlog(), if text contains pseudo-variables, they will be evaluated.
 
 ## Example
 
@@ -67,7 +65,6 @@ hello! from Kamailio! :)>
 
 ## TODO
 
-* implement function to send msg from any route for notification purposes.
 * export to KEMI
 
 ## Reference
