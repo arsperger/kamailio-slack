@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2020 arsperger arsperger@gmail.com
  *
- * Based on code of xmpp gw. Copyright(C) Kamailio.
+ * based on code of xmpp gw and xlog module Copyright(C) Kamailio.
  *
  * This file is part of Kamailio, a free SIP server.
  *
@@ -28,9 +28,11 @@
 
 MODULE_VERSION
 
+char *_xlog_buf = NULL;
 static int mod_init(void);
 static void mod_destroy(void);
 
+static int buf_size=4096;
 static char *slack_webhook = SLACK_DEFAULT_WEBHOOK;
 static char *slack_channel = SLACK_DEFAULT_CHANNEL;
 static char *slack_username = SLACK_DEFAULT_USERNAME;
@@ -41,6 +43,7 @@ static char *slack_icon = SLACK_DEFAULT_ICON;
  */
 static cmd_export_t cmds[] = {
 	{"slack_send_message", (cmd_function)slack_send_message, 0, 0, 0, REQUEST_ROUTE},
+	{"slack_send_log",	   (cmd_function)slack_slog1,   	 1, slack_fixup,  0, ANY_ROUTE},
 	{0, 0, 0, 0, 0, 0}
 };
 
@@ -77,6 +80,14 @@ struct module_exports exports = {
  */
 static int mod_init(void) {
 	LM_INFO("slack module init\n");
+
+	_xlog_buf = (char*)pkg_malloc((buf_size+1)*sizeof(char));
+	if(_xlog_buf==NULL)
+	{
+		PKG_MEM_ERROR;
+		return -1;
+	}
+
 	return(0);
 }
 
@@ -85,6 +96,8 @@ static int mod_init(void) {
  */
 static void mod_destroy() {
 	LM_INFO("slack module destroy\n");
+	if(_xlog_buf)
+		pkg_free(_xlog_buf);
 	return;
 }
 
@@ -102,7 +115,7 @@ static int curl_send(const char* uri, str *post_data){
 		curl_easy_setopt(curl_handle, CURLOPT_URL, uri);
 		if (post_data->s) {
 			curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, send_data);
-			curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDSIZE, post_data->len);
+			//curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDSIZE, strlen(send_data));
 		}
 		res = curl_easy_perform(curl_handle);
 		if (res != CURLE_OK) {
@@ -185,4 +198,59 @@ static int slack_send_message(struct sip_msg* msg, char* param1, char* param2)
 
 	return 1;
 
+}
+
+static int slack_fixup_helper(void** param, int param_no)
+{
+	sl_msg_t *xm;
+	str s;
+
+	xm = (sl_msg_t*)pkg_malloc(sizeof(sl_msg_t));
+	if(xm==NULL)
+	{
+		PKG_MEM_ERROR;
+		return -1;
+	}
+	memset(xm, 0, sizeof(sl_msg_t));
+	s.s = (char*)(*param); s.len = strlen(s.s);
+
+	if(pv_parse_format(&s, &xm->m)<0)
+	{
+		LM_ERR("wrong format[%s]\n", (char*)(*param));
+		pkg_free(xm);
+		return E_UNSPEC;
+	}
+	*param = (void*)xm;
+	return 0;
+}
+
+static int slack_fixup(void** param, int param_no)
+{
+	if(param_no!=1 || param==NULL || *param==NULL)
+	{
+		LM_ERR("invalid parameter number %d\n", param_no);
+		return E_UNSPEC;
+	}
+	return slack_fixup_helper(param, param_no);
+}
+
+/**
+ * send log message
+ */
+static inline int slog_helper(struct sip_msg* msg, sl_msg_t *xm)
+{
+	str txt;
+	txt.len = buf_size;
+
+	if(xl_print_log(msg, xm->m, _xlog_buf, &txt.len)<0)
+		return -1;
+
+	txt.s = _xlog_buf;
+
+	return curl_send(slack_webhook, &txt);
+}
+
+static int slack_slog1(struct sip_msg* msg, char* frm, char* str2)
+{
+	return slog_helper(msg, (sl_msg_t*)frm);
 }
