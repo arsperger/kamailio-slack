@@ -1,8 +1,8 @@
 /*
  * Copyright (C) 2020 arsperger arsperger@gmail.com
- * 
+ *
  * Based on code of xmpp gw. Copyright(C) Kamailio.
- * 
+ *
  * This file is part of Kamailio, a free SIP server.
  *
  * Kamailio is free software; you can redistribute it and/or modify
@@ -88,61 +88,27 @@ static void mod_destroy() {
 	return;
 }
 
-
-static size_t curl_recv(void *buffer, size_t size, size_t nmemb, void *userp) {
-	str *recv_data = (str *) userp;
-	int chunk_size = nmemb*size;
-	int new_size = recv_data->len + chunk_size;
-	LM_DBG("recv_bytes[%d]\n", chunk_size);
-
-	recv_data->s = (char*) pkg_realloc(recv_data->s, new_size + 1);
-	if (recv_data->s == NULL) {
-		LM_ERR("no pkg memory left\n");
-		return -1;
-	}
-	memcpy(recv_data->s + recv_data->len, buffer, chunk_size);
-	recv_data->len = new_size;
-	recv_data->s[recv_data->len] = '\0';
-
-	size_t recv_bytes = size * nmemb;
-	LM_INFO("recv_bytes[%ld][%s]\n", recv_bytes, (char*) buffer);
-	return recv_bytes;
-}
-
-static int curl_send(const char* uri, str *post_data, str *recv_data){
+static int curl_send(const char* uri, str *post_data){
 	LM_DBG("sending to[%s]\n", uri);
 	CURL *curl_handle;
 	CURLcode res;
 	curl_global_init(CURL_GLOBAL_ALL);
 	curl_handle = curl_easy_init();
 	char send_data[BODY_MAX_SIZE];
-	char curl_error[CURL_ERROR_SIZE + 1];
-	curl_error[CURL_ERROR_SIZE] = '\0';
 
 	snprintf(send_data, BODY_MAX_SIZE, BODY_FMT, slack_channel, slack_username, post_data->s, slack_icon);
 
 	if (curl_handle) {
-		res = curl_easy_setopt(curl_handle, CURLOPT_URL, uri);
-		if (res != CURLE_OK)
-			LM_INFO("Error: %s\n", curl_easy_strerror(res));
-		curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, curl_recv);
-		if (res != CURLE_OK)
-			LM_INFO("Error: %s\n", curl_easy_strerror(res));
-		curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *) recv_data);
-		if (res != CURLE_OK)
-			LM_INFO("Error: %s\n", curl_easy_strerror(res));
-		curl_easy_setopt(curl_handle, CURLOPT_ERRORBUFFER, curl_error);
-		if (res != CURLE_OK)
-			LM_INFO("Error: %s\n", curl_easy_strerror(res));
+		curl_easy_setopt(curl_handle, CURLOPT_URL, uri);
 		if (post_data->s) {
-			res = curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, send_data);
-			if (res != CURLE_OK)
-				LM_INFO("Error: %s\n", curl_easy_strerror(res));
+			curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, send_data);
+			curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDSIZE, post_data->len);
 		}
-
 		res = curl_easy_perform(curl_handle);
-		if (res != CURLE_OK)
-			LM_INFO("Error: %s\n", curl_easy_strerror(res));
+		if (res != CURLE_OK) {
+			LM_ERR("Error: %s\n", curl_easy_strerror(res));
+			return 0;
+		}
 
 		LM_INFO("curl sent completed!\n");
 		curl_easy_cleanup(curl_handle);
@@ -156,10 +122,9 @@ static int slack_send_message(struct sip_msg* msg, char* param1, char* param2)
 {
 	str body, from_uri, dst;
 	int mime;
-	str recv_data = {0,0};
 
 	LM_DBG("slack cmd_send_message\n");
-	
+
 	/* extract body */
 	if (!(body.s = get_body(msg))) {
 		LM_ERR("failed to extract body\n");
@@ -180,7 +145,7 @@ static int slack_send_message(struct sip_msg* msg, char* param1, char* param2)
                 LM_ERR("invalid content-type 0x%x\n", mime);
                 return -1;
     }
-	
+
 	/* extract sender */
 	if (parse_headers(msg, HDR_TO_F | HDR_FROM_F, 0) == -1 || !msg->to || !msg->from) {
 		LM_ERR("no To/From headers\n");
@@ -199,7 +164,7 @@ static int slack_send_message(struct sip_msg* msg, char* param1, char* param2)
 	if (msg->new_uri.len > 0) {
 		LM_DBG("using new URI as destination\n");
 		dst = msg->new_uri;
-	} else if (msg->first_line.u.request.uri.s 
+	} else if (msg->first_line.u.request.uri.s
 			&& msg->first_line.u.request.uri.len > 0) {
 		LM_DBG("using R-URI as destination\n");
 		dst = msg->first_line.u.request.uri;
@@ -212,10 +177,10 @@ static int slack_send_message(struct sip_msg* msg, char* param1, char* param2)
 	}
 
 	LM_INFO("slack destination to <%s>\n", dst.s);
-	
+
 	// TODO: check dst.s == slack channel
 
-	curl_send(slack_webhook, &body, &recv_data);
+	curl_send(slack_webhook, &body);
 	LM_DBG("slack message sent to: %s!\n", dst.s);
 
 	return 1;
