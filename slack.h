@@ -42,10 +42,7 @@ static int _slack_print_log(struct sip_msg* msg, pv_elem_p list, char *buf, int 
 	return pv_printf(msg, list, buf, len);
 }
 
-static int _sl_str_contact(str* str1, str* str2, str* dst);
 static int _curl_send(const char* uri, str *post_data );
-
-static int slack_message_fwd(struct sip_msg* msg, char* param1, char* param2);
 
 static int slack_fixup(void** param, int param_no);
 static int slack_slog1(struct sip_msg* msg, char* frm, char* str2);

@@ -40,7 +40,6 @@ static char *slack_icon = SLACK_DEFAULT_ICON;
  * Exported functions
  */
 static cmd_export_t cmds[] = {
-	{"slack_message_fwd",	(cmd_function)slack_message_fwd,	0, 0, 0, REQUEST_ROUTE},
 	{"slack_send",	  		(cmd_function)slack_slog1,			1, slack_fixup,  0, ANY_ROUTE},
 	{0, 0, 0, 0, 0, 0}
 };
@@ -131,47 +130,6 @@ static int _curl_send(const char* uri, str *post_data)
 	curl_global_cleanup();
 	pkg_free(send_data);
 	return 0;
-}
-
-/**
- *  send MESSAGE body to slack
- */
-static int slack_message_fwd(struct sip_msg* msg, char* param1, char* param2)
-{
-	str body;
-	int mime;
-
-	/* check content type */
-	if ((mime = parse_content_type_hdr(msg)) < 1) {
-		LM_ERR("failed parse content-type\n");
-		return -1;
-	}
-	if (mime!=MIMETYPE(TEXT,PLAIN) && mime!=MIMETYPE(MESSAGE,CPIM) ) {
-		LM_ERR("invalid content-type 0x%x\n", mime);
-        return -1;
-	}
-
-	/* extract body */
-	if (!(body.s = get_body(msg))) {
-		LM_ERR("failed to extract body\n");
-		return -1;
-	}
-	if (!msg->content_length) {
-		LM_ERR("no content-length found\n");
-		return -1;
-	}
-	body.len = get_content_length(msg);
-
-	if (body.len > buf_size) {
-		LM_ERR("msg body length is too big\n");
-		return -1;
-	}
-
-	_curl_send(slack_webhook, &body);
-	LM_DBG("slack message sent\n");
-
-	return 1;
-
 }
 
 static int slack_fixup_helper(void** param, int param_no)
