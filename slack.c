@@ -40,8 +40,8 @@ static char *slack_icon = SLACK_DEFAULT_ICON;
  * Exported functions
  */
 static cmd_export_t cmds[] = {
-	{"slack_send_message", (cmd_function)slack_send_message, 0, 0, 0, REQUEST_ROUTE},
-	{"slack_send_log",	   (cmd_function)slack_slog1,   	 1, slack_fixup,  0, ANY_ROUTE},
+	{"slack_message_fwd",	(cmd_function)slack_message_fwd,	0, 0, 0, REQUEST_ROUTE},
+	{"slack_send",	  		(cmd_function)slack_slog1,			1, slack_fixup,  0, ANY_ROUTE},
 	{0, 0, 0, 0, 0, 0}
 };
 
@@ -99,55 +99,79 @@ static void mod_destroy() {
 	return;
 }
 
-static int curl_send(const char* uri, str *post_data)
+static int _sl_str_contact(str* a, str* b, str* dst) {
+	if ( ( !a->s || a->len < 1 ) || ( !b->s || b->len < 1 ) ) {
+		LM_ERR("empty strings\n");
+		return -1;
+	}
+	dst->len = 0;
+	dst->s = NULL;
+	dst->s = (char*)shm_malloc(((a->len+b->len)+1+1));
+	if (!dst->s) {
+		LM_ERR("Error: can not allocate pkg memory [%d] bytes\n", a->len+b->len);
+		return -1;
+	}
+
+	memcpy(dst->s, a->s, a->len);
+	memcpy(dst->s + a->len, " ", 1); // +1
+	memcpy(dst->s + a->len + 1, b->s, b->len);
+	dst->s[a->len+b->len+1+1] = '\0'; // +1+1
+	dst->len = a->len+b->len+1+1;
+	LM_DBG("composed [%s]\n", dst->s);
+	return 1;
+}
+
+static int _curl_send(const char* uri, str *post_data)
 {
 	int datasz;
 	char* send_data;
 	CURL *curl_handle;
 	CURLcode res;
-	curl_global_init(CURL_GLOBAL_ALL);
-	curl_handle = curl_easy_init();
 	LM_DBG("sending to[%s]\n", uri);
 
 	datasz = snprintf(NULL, 0, BODY_FMT, slack_channel, slack_username, post_data->s, slack_icon);
-	send_data = pkg_malloc(datasz+1);
-	if(!send_data) {
-        LM_ERR("no pkg memory left\n");
+	send_data = (char*)pkg_malloc((datasz+1)*sizeof(char));
+	if(send_data==NULL) {
+        LM_ERR("Error: can not allocate pkg memory [%d] bytes\n", datasz);
         return -1;
     }
     snprintf(send_data, datasz+1, BODY_FMT, slack_channel, slack_username, post_data->s, slack_icon);
 
+	curl_global_init(CURL_GLOBAL_ALL);
+	curl_handle = curl_easy_init();
+
 	if (curl_handle) {
 		curl_easy_setopt(curl_handle, CURLOPT_URL, uri);
-		if (post_data->s) {
-			curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, send_data);
-		}
+		curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, send_data);
 		res = curl_easy_perform(curl_handle);
 		if (res != CURLE_OK) {
 			LM_ERR("Error: %s\n", curl_easy_strerror(res));
-			return 0;
 		}
-
-		LM_INFO("slack msg sent ok, [%d]\n", datasz);
 		curl_easy_cleanup(curl_handle);
-		curl_global_cleanup();
+		LM_INFO("slack msg sent ok, [%d]\n", datasz);
 	}
+	curl_global_cleanup();
 	pkg_free(send_data);
-	return 1;
+	return 0;
 }
 
-int sl_print_log(struct sip_msg* msg, pv_elem_p list, char *buf, int *len)
+/**
+ *  send MESSAGE body to slack
+ */
+static int slack_message_fwd(struct sip_msg* msg, char* param1, char* param2)
 {
-	return pv_printf(msg, list, buf, len);
-}
-
-/* send MESSAGE body to Slack */
-static int slack_send_message(struct sip_msg* msg, char* param1, char* param2)
-{
-	str body, from_uri, dst;
+	str body, from_uri, content;
 	int mime;
 
-	LM_DBG("slack cmd_send_message\n");
+	/* check content type */
+	if ((mime = parse_content_type_hdr(msg)) < 1) {
+		LM_ERR("failed parse content-type\n");
+		return -1;
+	}
+	if (mime!=MIMETYPE(TEXT,PLAIN) && mime!=MIMETYPE(MESSAGE,CPIM) ) {
+		LM_ERR("invalid content-type 0x%x\n", mime);
+        return -1;
+	}
 
 	/* extract body */
 	if (!(body.s = get_body(msg))) {
@@ -160,19 +184,14 @@ static int slack_send_message(struct sip_msg* msg, char* param1, char* param2)
 	}
 	body.len = get_content_length(msg);
 
-	/* check content type */
-	if ((mime = parse_content_type_hdr(msg)) < 1) {
-		LM_ERR("failed parse content-type\n");
+	if (body.len > buf_size) {
+		LM_ERR("msg body length is too big\n");
 		return -1;
 	}
-	if (mime != (TYPE_TEXT << 16) + SUBTYPE_PLAIN) {
-                LM_ERR("invalid content-type 0x%x\n", mime);
-                return -1;
-    }
 
 	/* extract sender */
-	if (parse_headers(msg, HDR_TO_F | HDR_FROM_F, 0) == -1 || !msg->to || !msg->from) {
-		LM_ERR("no To/From headers\n");
+	if (parse_headers(msg, HDR_FROM_F, 0) == -1 || !msg->from) {
+		LM_ERR("From headers not found\n");
 		return -1;
 	}
 	if (parse_from_header(msg) < 0 || !msg->from->parsed) {
@@ -180,32 +199,16 @@ static int slack_send_message(struct sip_msg* msg, char* param1, char* param2)
 		return -1;
 	}
 
-	from_uri = ((struct to_body *) msg->from->parsed)->uri;
+	from_uri = ((struct to_body*) msg->from->parsed)->uri;
 	LM_DBG("message from <%s>\n", from_uri.s);
 
-	/* extract recipient */
-	dst.len = 0;
-	if (msg->new_uri.len > 0) {
-		LM_DBG("using new URI as destination\n");
-		dst = msg->new_uri;
-	} else if (msg->first_line.u.request.uri.s
-			&& msg->first_line.u.request.uri.len > 0) {
-		LM_DBG("using R-URI as destination\n");
-		dst = msg->first_line.u.request.uri;
-	} else if (msg->to->parsed) {
-		LM_DBG("using TO-URI as destination\n");
-		dst = ((struct to_body *) msg->to->parsed)->uri;
-	} else {
-		LM_ERR("failed to find a valid destination\n");
-		return -1;
-	}
-
-	LM_INFO("slack destination to <%s>\n", dst.s);
-
-	// TODO: check dst.s == slack channel
-
-	curl_send(slack_webhook, &body);
-	LM_DBG("slack message sent to: %s!\n", dst.s);
+	// <arsen@arsperger.com> this is test message!
+	_sl_str_contact(&from_uri, &body, &content);
+	//content.len = from_uri.len + body.len;
+	//content.s = strcat(from_uri)
+	_curl_send(slack_webhook, &content);
+	shm_free(content->s);
+	LM_DBG("slack message sent\n");
 
 	return 1;
 
@@ -254,12 +257,12 @@ static inline int slog_helper(struct sip_msg* msg, sl_msg_t *sm)
 	str txt;
 	txt.len = buf_size;
 
-	if(sl_print_log(msg, sm->m, _slmsg_buf, &txt.len)<0)
+	if(_slack_print_log(msg, sm->m, _slmsg_buf, &txt.len)<0)
 		return -1;
 
 	txt.s = _slmsg_buf;
 
-	return curl_send(slack_webhook, &txt);
+	return _curl_send(slack_webhook, &txt);
 }
 
 static int slack_slog1(struct sip_msg* msg, char* frm, char* str2)
