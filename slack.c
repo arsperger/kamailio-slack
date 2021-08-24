@@ -99,28 +99,6 @@ static void mod_destroy() {
 	return;
 }
 
-static int _sl_str_contact(str* a, str* b, str* dst) {
-	if ( ( !a->s || a->len < 1 ) || ( !b->s || b->len < 1 ) ) {
-		LM_ERR("empty strings\n");
-		return -1;
-	}
-	dst->len = 0;
-	dst->s = NULL;
-	dst->s = (char*)shm_malloc(((a->len+b->len)+1+1));
-	if (!dst->s) {
-		LM_ERR("Error: can not allocate pkg memory [%d] bytes\n", a->len+b->len);
-		return -1;
-	}
-
-	memcpy(dst->s, a->s, a->len);
-	memcpy(dst->s + a->len, " ", 1); // +1
-	memcpy(dst->s + a->len + 1, b->s, b->len);
-	dst->s[a->len+b->len+1+1] = '\0'; // +1+1
-	dst->len = a->len+b->len+1+1;
-	LM_DBG("composed [%s]\n", dst->s);
-	return 1;
-}
-
 static int _curl_send(const char* uri, str *post_data)
 {
 	int datasz;
@@ -160,7 +138,7 @@ static int _curl_send(const char* uri, str *post_data)
  */
 static int slack_message_fwd(struct sip_msg* msg, char* param1, char* param2)
 {
-	str body, from_uri, content;
+	str body;
 	int mime;
 
 	/* check content type */
@@ -189,25 +167,7 @@ static int slack_message_fwd(struct sip_msg* msg, char* param1, char* param2)
 		return -1;
 	}
 
-	/* extract sender */
-	if (parse_headers(msg, HDR_FROM_F, 0) == -1 || !msg->from) {
-		LM_ERR("From headers not found\n");
-		return -1;
-	}
-	if (parse_from_header(msg) < 0 || !msg->from->parsed) {
-		LM_ERR("failed to parse From header\n");
-		return -1;
-	}
-
-	from_uri = ((struct to_body*) msg->from->parsed)->uri;
-	LM_DBG("message from <%s>\n", from_uri.s);
-
-	// <arsen@arsperger.com> this is test message!
-	_sl_str_contact(&from_uri, &body, &content);
-	//content.len = from_uri.len + body.len;
-	//content.s = strcat(from_uri)
-	_curl_send(slack_webhook, &content);
-	shm_free(content->s);
+	_curl_send(slack_webhook, &body);
 	LM_DBG("slack message sent\n");
 
 	return 1;
