@@ -32,7 +32,7 @@
 #include <curl/curl.h>
 
 #define BODY_FMT "{\"channel\": \"%s\", \"username\": \"%s\", \"text\": \"%s\", \"icon_emoji\": \"%s\" }"
-#define SLACK_DEFAULT_WEBHOOK "https://hooks.slack.com/services/XXXXXXXXXX/YYYYYYYYYY/ZZZZZZZZZZZZ"
+#define SLACK_DEFAULT_WEBHOOK "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
 #define SLACK_DEFAULT_CHANNEL "#webtest"
 #define SLACK_DEFAULT_USERNAME "webhookbot"
 #define SLACK_DEFAULT_ICON ":ghost:"
