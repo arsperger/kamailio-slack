@@ -24,7 +24,6 @@
 
 #include "../../core/sr_module.h"
 #include "../../core/dprint.h"
-#include "../../core/parser/parse_from.h"
 #include "../../core/parser/parse_content.h"
 #include "../../core/pvar.h"
 
@@ -32,7 +31,7 @@
 #include <curl/curl.h>
 
 #define BODY_FMT "{\"channel\": \"%s\", \"username\": \"%s\", \"text\": \"%s\", \"icon_emoji\": \"%s\" }"
-#define SLACK_DEFAULT_WEBHOOK "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
+#define SLACK_URL_MAX_SIZE 253
 #define SLACK_DEFAULT_CHANNEL "#webtest"
 #define SLACK_DEFAULT_USERNAME "webhookbot"
 #define SLACK_DEFAULT_ICON ":ghost:"
@@ -43,6 +42,8 @@ static int _slack_print_log(struct sip_msg* msg, pv_elem_p list, char *buf, int 
 }
 
 static int _curl_send(const char* uri, str *post_data );
+static int _slack_parse_url_param(char *val);
+static int _slack_url_param(modparam_t type, void *val);
 
 static int slack_fixup(void** param, int param_no);
 static int slack_slog1(struct sip_msg* msg, char* frm, char* str2);
