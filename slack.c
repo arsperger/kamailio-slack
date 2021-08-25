@@ -40,7 +40,7 @@ static char *slack_icon = SLACK_DEFAULT_ICON;
  * Exported functions
  */
 static cmd_export_t cmds[] = {
-	{"slack_send",	  		(cmd_function)slack_slog1,			1, slack_fixup,  0, ANY_ROUTE},
+	{"slack_send",	  		(cmd_function)slack_send1,			1, slack_fixup,  0, ANY_ROUTE},
 	{0, 0, 0, 0, 0, 0}
 };
 
@@ -99,13 +99,17 @@ static void mod_destroy() {
 	return;
 }
 
+/**
+ * send message with curl
+ * @return 0 on success, -1 on error
+ */
 static int _curl_send(const char* uri, str *post_data)
 {
 	int datasz;
 	char* send_data;
 	CURL *curl_handle;
 	CURLcode res;
-	// LM_DBG("sending to[%s]\n", uri); // don't print webhook to log
+	// LM_DBG("sending to[%s]\n", uri);
 
 	datasz = snprintf(NULL, 0, BODY_FMT, slack_channel, slack_username, post_data->s, slack_icon);
 	send_data = (char*)pkg_malloc((datasz+1)*sizeof(char));
@@ -123,7 +127,7 @@ static int _curl_send(const char* uri, str *post_data)
 		curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, send_data);
 		res = curl_easy_perform(curl_handle);
 		if (res != CURLE_OK)
-			LM_ERR("Error: %s\n", curl_easy_strerror(res));
+			goto error;
 		else
 			LM_INFO("slack msg sent ok, [%d]\n", datasz);
 		curl_easy_cleanup(curl_handle);
@@ -131,6 +135,10 @@ static int _curl_send(const char* uri, str *post_data)
 	curl_global_cleanup();
 	pkg_free(send_data);
 	return 0;
+
+error:
+	LM_ERR("Error: %s\n", curl_easy_strerror(res));
+	return -1;
 }
 
 /**
@@ -141,7 +149,7 @@ static int _slack_parse_url_param(char *val)
 	int len;
 	len = strlen(val);
 	if(len > SLACK_URL_MAX_SIZE) {
-		LM_ERR("webhook max size exceeded %d\n", SLACK_URL_MAX_SIZE);
+		LM_ERR("webhook url max size exceeded %d\n", SLACK_URL_MAX_SIZE);
 		return -1;
 	}
 	if(strncmp(val, "https://hooks.slack.com", 23)) {
@@ -208,7 +216,7 @@ static int slack_fixup(void** param, int param_no)
 /**
  * send text message to slack
  */
-static inline int slog_helper(struct sip_msg* msg, sl_msg_t *sm)
+static inline int slack_helper(struct sip_msg* msg, sl_msg_t *sm)
 {
 	str txt;
 	txt.len = buf_size;
@@ -221,7 +229,52 @@ static inline int slog_helper(struct sip_msg* msg, sl_msg_t *sm)
 	return _curl_send(slack_url, &txt);
 }
 
-static int slack_slog1(struct sip_msg* msg, char* frm, char* str2)
+static int slack_send1(struct sip_msg* msg, char* frm, char* str2)
 {
-	return slog_helper(msg, (sl_msg_t*)frm);
+	return slack_helper(msg, (sl_msg_t*)frm);
+}
+
+
+/**
+ * Kemi
+ * send slack msg after evaluation of pvars
+ */
+static int ki_slack_send(sip_msg_t *msg, str *slmsg)
+{
+	pv_elem_t *xmodel=NULL;
+	str txt = STR_NULL;
+	int res;
+
+	if(pv_parse_format(slmsg, &xmodel)<0) {
+		LM_ERR("wrong format[%s]\n", slmsg->s);
+		return -1;
+	}
+	if(pv_printf_s(msg, xmodel, &txt)!=0) {
+		LM_ERR("Error: cannot eval reparsed value\n");
+		pv_elem_free_all(xmodel);
+		return -1;
+	}
+
+	res = _curl_send(slack_url, &txt);
+	pv_elem_free_all(xmodel);
+	return res;
+}
+
+/* clang-format off */
+static sr_kemi_t sr_kemi_slack_exports[] = {
+	{ str_init("slack"), str_init("slack_send"),
+		SR_KEMIP_INT, ki_slack_send,
+		{ SR_KEMIP_STR, SR_KEMIP_NONE, SR_KEMIP_NONE,
+			SR_KEMIP_NONE, SR_KEMIP_NONE, SR_KEMIP_NONE }
+	},
+
+	{ {0, 0}, {0, 0}, 0, NULL, { 0, 0, 0, 0, 0, 0 } }
+};
+/* clang-format on */
+
+
+int mod_register(char *path, int *dlflags, void *p1, void *p2)
+{
+	sr_kemi_modules_add(sr_kemi_slack_exports);
+	return 0;
 }
