@@ -138,6 +138,7 @@ static int _curl_send(const char* uri, str *post_data)
 
 error:
 	LM_ERR("Error: %s\n", curl_easy_strerror(res));
+	curl_easy_cleanup(curl_handle);
 	return -1;
 }
 

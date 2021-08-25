@@ -1,73 +1,154 @@
-# kamailio mod_slack
+Slack Module
 
-Kamailio slack integration.
+Arsen Semenov
 
-This module provides capability to send messages to slack channel.
+   <arsperger@gmail.com>
 
-Slack channel, posting username and an icon is configurable via module parameters.
+   Copyright © 2021 arsperger.com
+     __________________________________________________________________
 
-Module made as a "learning lesson" to expore Kamailio internals.
+   Table of Contents
 
-Module exports following functions:
+   1. Admin Guide
 
-`slack_send_message` - extract body from MESSAGE and send it to slack. Works only in request route.
+        1. Overview
+        2. Dependencies
 
-`slack_send_log` - send custom text message, works by the same way as xlog(), if text contains pseudo-variables, they will be evaluated.
+              2.1. Kamailio Modules
+              2.2. External Libraries or Applications
 
-## Example
+        3. Parameters
 
-module configuration
-```
-loadmodule "slack.so"
-modparam("slack", "webhook_uri", "https://hooks.slack.com/services/AAAAA/BBBBB/CCCCCCC")
-modparam("slack", "channel", "#webtest")
+              3.1. slack url (str)
+              3.2. channel (str)
+              3.3. username (str)
+              3.4. icon_emogi (str)
+
+        4. Functions
+
+              4.1. slack_send(format)
+
+   List of Examples
+
+   1.1. Set slack webhook URL parameter
+   1.2. Set channel parameter
+   1.3. Set username parameter
+   1.4. Set icon_emogi parameter
+   1.5. slack_send usage
+
+Chapter 1. Admin Guide
+
+   Table of Contents
+
+   1. Overview
+   2. Dependencies
+
+        2.1. Kamailio Modules
+        2.2. External Libraries or Applications
+
+   3. Parameters
+
+        3.1. slack url (str)
+        3.2. channel (str)
+        3.3. username (str)
+        3.4. icon_emogi (str)
+
+   4. Functions
+
+        4.1. slack_send(format)
+
+1. Overview
+
+   This module provides integration with Slack over webhooks. Slack
+   integration (https://api.slack.com/messaging/webhooks)
+
+   It relays on libcurl. library (https://curl.se/libcurl).
+
+2. Dependencies
+
+   2.1. Kamailio Modules
+   2.2. External Libraries or Applications
+
+2.1. Kamailio Modules
+
+   The following modules must be loaded before this module:
+     * none.
+
+2.2. External Libraries or Applications
+
+   The following libraries or applications must be installed before
+   running Kamailio with this module loaded:
+     * libcurl
+
+3. Parameters
+
+   3.1. slack url (str)
+   3.2. channel (str)
+   3.3. username (str)
+   3.4. icon_emogi (str)
+
+3.1. slack url (str)
+
+   Slack webhook url
+
+   Default value is not set (empty)
+
+   Example 1.1. Set slack webhook URL parameter
+...
+modparam("slack", "slack_url", "https://hooks.slack.com/services/T00000000/B0000
+0000/XXXXXXXXXXXXXXXXXXXXXXXX")
+...
+
+3.2. channel (str)
+
+   Slack channel name
+
+   Default value is #kamailio
+
+   Example 1.2. Set channel parameter
+...
+modparam("slack", "channel", "#kamailio")
+...
+
+3.3. username (str)
+
+   Specify the username for the published message
+
+   Default value is webhookbot.
+
+   Example 1.3. Set username parameter
+...
 modparam("slack", "username", "webhookbot")
+...
+
+3.4. icon_emogi (str)
+
+   specify an emoji (using colon shortcodes, eg. :white_check_mark:) to
+   use as the profile photo alongside the message.
+
+   Default value is :ghost:
+
+   Example 1.4. Set icon_emogi parameter
+...
 modparam("slack", "icon_emogi", ":ghost:")
-```
-
-```
-request_route() {
 ...
-	# extract text from MSG and send to slack
-	if (is_method("MESSAGE")) {
-		xlog("L_INFO","Got MESSAGE request to [$tu] send body to slack\n");
-		slack_send_message();
-	}
+
+4. Functions
+
+   4.1. slack_send(format)
+
+4.1.  slack_send(format)
+
+   Send a formatted message to slack channel.
+
+   The parameters are:
+     * format - The formatted string to be send.
+
+   The parameters can contain pseudo-variables.
+
+   This function can be used from ANY_ROUTE.
+
+   Example 1.5. slack_send usage
 ...
-```
-
-Logs:
-
-```
- 1(7) INFO: {1 28575 MESSAGE O0o3IuzX9mIcWvdnJZfN-JrXY4gUPAEg} <script>: Got MESSAGE request to [sip:7777@kamailio] send body to slack
- 1(7) INFO: {1 28575 MESSAGE O0o3IuzX9mIcWvdnJZfN-JrXY4gUPAEg} slack [slack.c:214]: slack_send_message(): slack destination to <sip:7777@kamailio:5060;transport=udp SIP/2.0
-Via: SIP/2.0/UDP 172.16.238.15:53979;rport;branch=z9hG4bKPjjRaoAfrls4r9bDWyczMvCmKqu1nsg.YR
-Max-Forwards: 69
-From: <sip:5555@kamailio>;tag=Faj6t4OA4KwTs0ka4vBYa4VvebK0TyNb
-To: <sip:7777@kamailio>
-Call-ID: O0o3IuzX9mIcWvdnJZfN-JrXY4gUPAEg
-CSeq: 28575 MESSAGE
-Accept: text/plain, application/im-iscomposing+xml
-User-Agent: PJSUA v2.9 Linux-5.9.198.212/x86_64
-Route: <sip:kamailio:5060;transport=udp;lr>
-Route: <sip:kamailio:5060;transport=udp;lr>
-Content-Type: text/plain
-Content-Length:    24
-
-hello! from Kamailio! :)>
- 1(7) INFO: {1 28575 MESSAGE O0o3IuzX9mIcWvdnJZfN-JrXY4gUPAEg} slack [slack.c:108]: curl_recv(): recv_bytes[2][ok]
- 1(7) INFO: {1 28575 MESSAGE O0o3IuzX9mIcWvdnJZfN-JrXY4gUPAEg} slack [slack.c:147]: curl_send(): curl sent completed!
- ```
-
-## Requrements
-
-* libcurl
-
-## TODO
-
-* export to KEMI
-
-## Reference
-
-* [Slack integration](https://api.slack.com/messaging/webhooks)
-* [Kamailio Development guide](http://www.asipto.com/pub/kamailio-devel-guide)
+    slack_send("Hello from Kamailio! caller=$fU;callee=$tU;callid=$ci");
+...
