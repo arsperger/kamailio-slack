@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 arsperger arsperger@gmail.com
+ * Copyright (C) 2021 Arsen Semenov arsperger@gmail.com
  *
  * This file is part of Kamailio, a free SIP server.
  *
@@ -26,24 +26,23 @@
 #include "../../core/dprint.h"
 #include "../../core/parser/parse_from.h"
 #include "../../core/parser/parse_content.h"
+#include "../../core/pvar.h"
 
 #include <string.h>
 #include <curl/curl.h>
 
-#include "sl_lib.h"
-#include "../../core/pvar.h"
-
 #define BODY_FMT "{\"channel\": \"%s\", \"username\": \"%s\", \"text\": \"%s\", \"icon_emoji\": \"%s\" }"
-#define SLACK_DEFAULT_WEBHOOK "https://hooks.slack.com/services/XXXXXXXXXX/YYYYYYYYYY/ZZZZZZZZZZZZ"
+#define SLACK_DEFAULT_WEBHOOK "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
 #define SLACK_DEFAULT_CHANNEL "#webtest"
 #define SLACK_DEFAULT_USERNAME "webhookbot"
 #define SLACK_DEFAULT_ICON ":ghost:"
 
-#define BODY_MAX_SIZE 256
-#define REQUEST_MAX_SIZE 1024
+static int _slack_print_log(struct sip_msg* msg, pv_elem_p list, char *buf, int *len)
+{
+	return pv_printf(msg, list, buf, len);
+}
 
-static int curl_send(const char* uri, str *post_data );
-static int slack_send_message(struct sip_msg* msg, char* param1, char* param2);
+static int _curl_send(const char* uri, str *post_data );
 
 static int slack_fixup(void** param, int param_no);
 static int slack_slog1(struct sip_msg* msg, char* frm, char* str2);
