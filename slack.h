@@ -26,6 +26,7 @@
 #include "../../core/dprint.h"
 #include "../../core/parser/parse_content.h"
 #include "../../core/pvar.h"
+#include "../../core/kemi.h"
 
 #include <string.h>
 #include <curl/curl.h>
@@ -46,7 +47,7 @@ static int _slack_parse_url_param(char *val);
 static int _slack_url_param(modparam_t type, void *val);
 
 static int slack_fixup(void** param, int param_no);
-static int slack_slog1(struct sip_msg* msg, char* frm, char* str2);
+static int slack_send1(struct sip_msg* msg, char* frm, char* str2);
 static int slack_fixup_helper(void** param, int param_no);
 
 typedef struct _sl_msg
