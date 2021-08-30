@@ -50,7 +50,7 @@ static cmd_export_t cmds[] = {
  */
 static param_export_t mod_params[] = {
 	{ "slack_url", 			PARAM_STRING|USE_FUNC_PARAM, (void*)_slack_url_param},
-	{ "channel",			PARAM_STRING, &slack_channel },
+	{ "channel",			PARAM_STRING, &slack_channel }, // channel starts with #
 	{ "username",			PARAM_STRING, &slack_username },
 	{ "icon_emogi",			PARAM_STRING, &slack_icon },
 	{0, 0, 0}
@@ -120,26 +120,34 @@ static int _curl_send(const char* uri, str *post_data)
     snprintf(send_data, datasz+1, BODY_FMT, slack_channel, slack_username, post_data->s, slack_icon);
 
 	curl_global_init(CURL_GLOBAL_ALL);
-	curl_handle = curl_easy_init();
 
-	if (curl_handle) {
-		curl_easy_setopt(curl_handle, CURLOPT_URL, uri);
-		curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, send_data);
-		res = curl_easy_perform(curl_handle);
-		if (res != CURLE_OK)
-			goto error;
-		else
-			LM_INFO("slack msg sent ok, [%d]\n", datasz);
+	if((curl_handle=curl_easy_init())==NULL) {
+    	LM_ERR("Error: Unable to init cURL library\n");
+		curl_global_cleanup();
+        return -1;
+    }
+
+	curl_easy_setopt(curl_handle, CURLOPT_URL, uri);
+	curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, send_data);
+	res = curl_easy_perform(curl_handle);
+
+	if (res != CURLE_OK) {
+		LM_ERR("slack request send error: %s\n", curl_easy_strerror(res));
 		curl_easy_cleanup(curl_handle);
+		curl_global_cleanup();
+		if(send_data) {
+			pkg_free(send_data);
+		}
+		return -1;
 	}
-	curl_global_cleanup();
-	pkg_free(send_data);
-	return 0;
 
-error:
-	LM_ERR("Error: %s\n", curl_easy_strerror(res));
+	LM_INFO("slack request sent [%d]\n", datasz);
 	curl_easy_cleanup(curl_handle);
-	return -1;
+	curl_global_cleanup();
+	if (send_data) {
+		pkg_free(send_data);
+	}
+	return 0;
 }
 
 /**
@@ -153,12 +161,19 @@ static int _slack_parse_url_param(char *val)
 		LM_ERR("webhook url max size exceeded %d\n", SLACK_URL_MAX_SIZE);
 		return -1;
 	}
+
 	if(strncmp(val, "https://hooks.slack.com", 23)) {
-		LM_ERR("invalid slack webhook url [%s]\n", val);
+		LM_ERR("slack invalid webhook url [%s]\n", val);
 		return -1;
 	}
-	// TODO: parse webhook to multiple channels eg.: chan1=>https://AAA/BBB/CC, chan2=>...
+
+	// TODO: parse webhook to multiple channels? eg.: chan1=>https://AAA/BBB/CC, chan2=>...
+
 	slack_url = (char*)pkg_malloc(len + 1);
+	if (slack_url==NULL) {
+		PKG_MEM_ERROR;
+		return -1;
+	}
 	strcpy(slack_url, val);
 	slack_url[len] = '\0';
 
@@ -176,7 +191,6 @@ int _slack_url_param(modparam_t type, void *val)
 	}
 
 	return _slack_parse_url_param((char*)val);
-
 }
 
 static int slack_fixup_helper(void** param, int param_no)
@@ -203,6 +217,7 @@ static int slack_fixup_helper(void** param, int param_no)
 	*param = (void*)sm;
 	return 0;
 }
+
 
 static int slack_fixup(void** param, int param_no)
 {
@@ -239,6 +254,7 @@ static int slack_send1(struct sip_msg* msg, char* frm, char* str2)
 /**
  * Kemi
  * send slack msg after evaluation of pvars
+ * @return 0 on success, -1 on error
  */
 static int ki_slack_send(sip_msg_t *msg, str *slmsg)
 {
@@ -260,6 +276,7 @@ static int ki_slack_send(sip_msg_t *msg, str *slmsg)
 	pv_elem_free_all(xmodel);
 	return res;
 }
+
 
 /* clang-format off */
 static sr_kemi_t sr_kemi_slack_exports[] = {
