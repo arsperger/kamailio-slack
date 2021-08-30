@@ -32,7 +32,7 @@
 #include <curl/curl.h>
 
 #define BODY_FMT "{\"channel\": \"%s\", \"username\": \"%s\", \"text\": \"%s\", \"icon_emoji\": \"%s\" }"
-#define SLACK_URL_MAX_SIZE 253
+#define SLACK_URL_MAX_SIZE 128
 #define SLACK_DEFAULT_CHANNEL "#webtest"
 #define SLACK_DEFAULT_USERNAME "webhookbot"
 #define SLACK_DEFAULT_ICON ":ghost:"
